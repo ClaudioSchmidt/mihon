@@ -47,6 +47,11 @@ class ReaderPreferences(
 
     fun webtoonDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_webtoon", true)
 
+    fun webtoonDoubleTapBehavior() = preferenceStore.getEnum(
+        "webtoon_double_tap_behavior",
+        WebtoonDoubleTapBehavior.ZOOM_IN,
+    )
+
     fun imageScaleType() = preferenceStore.getInt("pref_image_scale_type_key", 1)
 
     fun zoomStart() = preferenceStore.getInt("pref_zoom_start_key", 1)
@@ -161,6 +166,12 @@ class ReaderPreferences(
         HIGH(13),
         LOW(31),
         LOWEST(47),
+    }
+
+    enum class WebtoonDoubleTapBehavior(val titleRes: StringResource) {
+        OFF(MR.strings.webtoon_double_tap_off),
+        ZOOM_IN(MR.strings.webtoon_double_tap_zoom_in),
+        FIT_HEIGHT(MR.strings.webtoon_double_tap_fit_height),
     }
 
     companion object {

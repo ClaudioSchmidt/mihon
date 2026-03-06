@@ -6,6 +6,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.widget.FrameLayout
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.WebtoonDoubleTapBehavior
 
 /**
  * Frame layout which contains a [WebtoonRecyclerView]. It's needed to handle touch events,
@@ -37,6 +38,12 @@ class WebtoonFrame(context: Context) : FrameLayout(context) {
         set(value) {
             field = value
             recycler?.zoomOutDisabled = value
+        }
+
+    var doubleTapBehavior = WebtoonDoubleTapBehavior.ZOOM_IN
+        set(value) {
+            field = value
+            recycler?.doubleTapBehavior = value
         }
 
     /**

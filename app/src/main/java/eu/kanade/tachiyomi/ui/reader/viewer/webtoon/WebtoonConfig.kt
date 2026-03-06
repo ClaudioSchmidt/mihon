@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.webtoon
 
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.WebtoonDoubleTapBehavior
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation
@@ -41,6 +42,11 @@ class WebtoonConfig(
         private set
 
     var doubleTapZoomChangedListener: ((Boolean) -> Unit)? = null
+
+    var doubleTapBehavior = WebtoonDoubleTapBehavior.ZOOM_IN
+        private set
+
+    var doubleTapBehaviorChangedListener: ((WebtoonDoubleTapBehavior) -> Unit)? = null
 
     val theme = readerPreferences.readerTheme().get()
 
@@ -89,6 +95,12 @@ class WebtoonConfig(
             .register(
                 { doubleTapZoom = it },
                 { doubleTapZoomChangedListener?.invoke(it) },
+            )
+
+        readerPreferences.webtoonDoubleTapBehavior()
+            .register(
+                { doubleTapBehavior = it },
+                { doubleTapBehaviorChangedListener?.invoke(it) },
             )
 
         readerPreferences.readerTheme().changes()

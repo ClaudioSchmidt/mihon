@@ -153,6 +153,10 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
             frame.doubleTapZoom = it
         }
 
+        config.doubleTapBehaviorChangedListener = {
+            frame.doubleTapBehavior = it
+        }
+
         config.zoomPropertyChangedListener = {
             frame.zoomOutDisabled = it
         }

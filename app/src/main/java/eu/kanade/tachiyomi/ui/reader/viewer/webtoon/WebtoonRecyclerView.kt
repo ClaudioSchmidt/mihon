@@ -11,6 +11,7 @@ import android.view.animation.DecelerateInterpolator
 import androidx.core.animation.doOnEnd
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.WebtoonDoubleTapBehavior
 import eu.kanade.tachiyomi.ui.reader.viewer.GestureDetectorWithLongTap
 import kotlin.math.abs
 
@@ -37,23 +38,35 @@ class WebtoonRecyclerView @JvmOverloads constructor(
     var zoomOutDisabled = false
         set(value) {
             field = value
-            if (value && currentScale < DEFAULT_RATE) {
+            if (value && currentScale < DEFAULT_RATE && !fitHeightMode) {
                 zoom(currentScale, DEFAULT_RATE, x, 0f, y, 0f)
             }
         }
     private val minRate
-        get() = if (zoomOutDisabled) DEFAULT_RATE else MIN_RATE
+        get() = when {
+            fitHeightMode -> fitHeightScale.coerceAtLeast(MIN_RATE)
+            zoomOutDisabled -> DEFAULT_RATE
+            else -> MIN_RATE
+        }
 
     private val listener = GestureListener()
     private val detector = Detector()
 
     var doubleTapZoom = true
+    var doubleTapBehavior = WebtoonDoubleTapBehavior.ZOOM_IN
 
     var tapListener: ((MotionEvent) -> Unit)? = null
     var longTapListener: ((MotionEvent) -> Boolean)? = null
 
     private var isManuallyScrolling = false
     private var tapDuringManualScroll = false
+
+    // Fit-height state
+    private var fitHeightMode = false
+    private var fitHeightScrolled = false
+    private var fitHeightPanelPosition = NO_POSITION
+    private var fitHeightPanelHeight = 0
+    private var fitHeightScale = DEFAULT_RATE
 
     override fun onMeasure(widthSpec: Int, heightSpec: Int) {
         halfWidth = MeasureSpec.getSize(widthSpec) / 2
@@ -80,6 +93,10 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         lastVisibleItemPosition =
             (layoutManager as LinearLayoutManager).findLastVisibleItemPosition()
         firstVisibleItemPosition = layoutManager.findFirstVisibleItemPosition()
+
+        if (fitHeightMode && dy != 0) {
+            fitHeightScrolled = true
+        }
     }
 
     override fun onScrollStateChanged(state: Int) {
@@ -118,6 +135,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         toX: Float,
         fromY: Float,
         toY: Float,
+        onEnd: (() -> Unit)? = null,
     ) {
         isZooming = true
         val animatorSet = AnimatorSet()
@@ -139,6 +157,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         animatorSet.doOnEnd {
             isZooming = false
             currentScale = toRate
+            onEnd?.invoke()
         }
     }
 
@@ -185,6 +204,11 @@ class WebtoonRecyclerView @JvmOverloads constructor(
     }
 
     fun onScale(scaleFactor: Float) {
+        // Any manual pinch exits fit-height mode
+        if (fitHeightMode) {
+            fitHeightMode = false
+        }
+
         currentScale *= scaleFactor
         currentScale = currentScale.coerceIn(
             minRate,
@@ -227,6 +251,115 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         isManuallyScrolling = true
     }
 
+    /**
+     * Zoom out to fit the full height of the panel at the tap position.
+     * Layout and scroll are set BEFORE the animation with a compensating Y translation
+     * so there's no visual jump, then we animate smoothly to the target state.
+     */
+    private fun zoomToFitHeight(ev: MotionEvent) {
+        val child = findChildViewUnder(ev.x, ev.y) ?: return
+        val position = getChildAdapterPosition(child)
+        if (position == NO_POSITION) return
+
+        val panelHeight = child.height
+        if (panelHeight <= 0 || panelHeight <= originalHeight) return
+
+        val targetScale = originalHeight.toFloat() / panelHeight.toFloat()
+        if (targetScale >= DEFAULT_RATE) return
+
+        // Store panel info for zoom-back
+        fitHeightPanelPosition = position
+        fitHeightPanelHeight = panelHeight
+        fitHeightScale = targetScale
+
+        // Remember child's screen position before any layout changes
+        val childTopBefore = child.top
+
+        // Pre-set layout height so the full panel is laid out (needed at zoomed-out scale)
+        val lm = layoutManager as? LinearLayoutManager ?: return
+        layoutParams.height = (originalHeight / targetScale).toInt()
+        halfHeight = layoutParams.height / 2
+        lm.scrollToPositionWithOffset(position, 0)
+
+        // Compensate: set y so that visually the panel stays in the same screen position.
+        y = childTopBefore.toFloat()
+
+        // Target Y: panel centered on screen at targetScale.
+        val targetY = (originalHeight - panelHeight).toFloat() / 2f
+
+        fitHeightMode = true
+        fitHeightScrolled = false
+
+        // Delay animation by one frame so layout settles first
+        post {
+            zoom(DEFAULT_RATE, targetScale, 0f, 0f, childTopBefore.toFloat(), targetY)
+        }
+    }
+
+    /**
+     * Zoom back from fit-height to fit-width (1x).
+     * If the user hasn't scrolled: clamp to panel bounds so adjacent panels are never shown.
+     * If the user has scrolled (sees adjacent panels): zoom back normally at tap position.
+     */
+    private fun zoomBackFromFitHeight(ev: MotionEvent) {
+        fitHeightMode = false
+
+        if (fitHeightScrolled) {
+            // User scrolled while zoomed out — zoom back keeping tap point stationary
+            zoomToDefault(ev)
+        } else {
+            // User didn't scroll — clamp to panel bounds
+            val panelFraction = ev.y / originalHeight.toFloat()
+            val panelY = (panelFraction * fitHeightPanelHeight).toInt()
+
+            val scrollInPanel = panelY.minus(originalHeight / 2).coerceIn(
+                0,
+                (fitHeightPanelHeight - originalHeight).coerceAtLeast(0),
+            )
+
+            val savedPosition = fitHeightPanelPosition
+            val endY = -scrollInPanel.toFloat()
+
+            zoom(currentScale, DEFAULT_RATE, x, 0f, y, endY) {
+                y = 0f
+                layoutParams.height = originalHeight
+                halfHeight = originalHeight / 2
+                requestLayout()
+
+                val lm = layoutManager as? LinearLayoutManager
+                lm?.scrollToPositionWithOffset(savedPosition, -scrollInPanel)
+            }
+        }
+    }
+
+    /**
+     * Zoom back to 1x keeping the tap point at its screen position,
+     * same principle as the zoom-in double tap. Layout changes are
+     * deferred to onEnd to avoid jumps when the layout is enlarged.
+     */
+    private fun zoomToDefault(ev: MotionEvent) {
+        val tapX = ev.x
+        val tapY = ev.y
+        val tapScreenY = y + halfHeight + (tapY - halfHeight) * currentScale
+        val toY = y + (tapY - halfHeight) * (currentScale - DEFAULT_RATE)
+
+        zoom(currentScale, DEFAULT_RATE, x, 0f, y, toY) {
+            val child = findChildViewUnder(tapX, tapY)
+            val position = if (child != null) getChildAdapterPosition(child) else NO_POSITION
+            val offsetInChild = if (child != null) (tapY - child.top).toInt() else 0
+
+            y = 0f
+            layoutParams.height = originalHeight
+            halfHeight = originalHeight / 2
+            requestLayout()
+
+            if (position != NO_POSITION) {
+                val lm = layoutManager as? LinearLayoutManager
+                lm?.scrollToPositionWithOffset(position, tapScreenY.toInt() - offsetInChild)
+            }
+        }
+    }
+
     inner class GestureListener : GestureDetectorWithLongTap.Listener() {
 
         override fun onSingleTapConfirmed(ev: MotionEvent): Boolean {
@@ -242,17 +375,39 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         }
 
         fun onDoubleTapConfirmed(ev: MotionEvent) {
-            if (!isZooming && doubleTapZoom) {
-                if (scaleX != DEFAULT_RATE) {
-                    zoom(currentScale, DEFAULT_RATE, x, 0f, y, 0f)
-                    layoutParams.height = originalHeight
-                    halfHeight = layoutParams.height / 2
-                    requestLayout()
-                } else {
-                    val toScale = 2f
-                    val toX = (halfWidth - ev.x) * (toScale - 1)
-                    val toY = (halfHeight - ev.y) * (toScale - 1)
-                    zoom(DEFAULT_RATE, toScale, 0f, toX, 0f, toY)
+            if (isZooming) return
+
+            when (doubleTapBehavior) {
+                WebtoonDoubleTapBehavior.OFF -> {
+                    // Double tap disabled, do nothing
+                }
+                WebtoonDoubleTapBehavior.ZOOM_IN -> {
+                    // Original behavior (respects legacy doubleTapZoom toggle)
+                    if (!doubleTapZoom) return
+                    if (scaleX != DEFAULT_RATE) {
+                        zoom(currentScale, DEFAULT_RATE, x, 0f, y, 0f)
+                        layoutParams.height = originalHeight
+                        halfHeight = layoutParams.height / 2
+                        requestLayout()
+                    } else {
+                        val toScale = 2f
+                        val toX = (halfWidth - ev.x) * (toScale - 1)
+                        val toY = (halfHeight - ev.y) * (toScale - 1)
+                        zoom(DEFAULT_RATE, toScale, 0f, toX, 0f, toY)
+                    }
+                }
+                WebtoonDoubleTapBehavior.FIT_HEIGHT -> {
+                    if (fitHeightMode) {
+                        // Currently zoomed out to fit height -> zoom back to 1x
+                        zoomBackFromFitHeight(ev)
+                    } else if (scaleX != DEFAULT_RATE) {
+                        // Currently at some other zoom level -> reset to 1x
+                        fitHeightMode = false
+                        zoomToDefault(ev)
+                    } else {
+                        // At 1x -> zoom out to fit panel height
+                        zoomToFitHeight(ev)
+                    }
                 }
             }
         }

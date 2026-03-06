@@ -194,10 +194,17 @@ private fun ColumnScope.WebtoonViewerSettings(screenModel: ReaderSettingsScreenM
         )
     }
 
-    CheckboxItem(
-        label = stringResource(MR.strings.pref_double_tap_zoom),
-        pref = screenModel.preferences.webtoonDoubleTapZoomEnabled(),
-    )
+    val doubleTapBehavior by screenModel.preferences.webtoonDoubleTapBehavior().collectAsState()
+    SettingsChipRow(MR.strings.pref_webtoon_double_tap_behavior) {
+        ReaderPreferences.WebtoonDoubleTapBehavior.entries.map {
+            FilterChip(
+                selected = doubleTapBehavior == it,
+                onClick = { screenModel.preferences.webtoonDoubleTapBehavior().set(it) },
+                label = { Text(stringResource(it.titleRes)) },
+            )
+        }
+    }
+
     CheckboxItem(
         label = stringResource(MR.strings.pref_webtoon_disable_zoom_out),
         pref = screenModel.preferences.webtoonDisableZoomOut(),
