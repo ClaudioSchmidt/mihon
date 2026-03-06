@@ -26,7 +26,6 @@ import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.unit.ColorProvider
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asDrawable
-import coil3.executeBlocking
 import coil3.imageLoader
 import coil3.request.CachePolicy
 import coil3.request.ImageRequest
@@ -40,6 +39,8 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import tachiyomi.core.common.preference.TriState
@@ -262,29 +263,37 @@ abstract class BaseUpdatesGridGlanceWidget(
         val heightPx = coverHeight.value.toInt().dpToPx
         val roundPx = context.resources.getDimension(R.dimen.appwidget_inner_radius)
         return withIOContext {
+            // limit concurrent decodes to avoid CPU/memory spikes
+            val concurrency = 4
+            val semaphore = Semaphore(concurrency)
+
             this@prepareData
                 .take(rowCount * columnCount)
                 .map { (mangaId, cover) ->
                     async {
-                        val request = ImageRequest.Builder(context)
-                            .data(cover)
-                            .memoryCachePolicy(CachePolicy.DISABLED)
-                            .precision(Precision.EXACT)
-                            .size(widthPx, heightPx)
-                            .scale(Scale.FILL)
-                            .let {
-                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                                    it.transformations(RoundedCornersTransformation(roundPx))
-                                } else {
-                                    it // Handled by system
-                                }
+                        semaphore.withPermit {
+                            val requestBuilder = ImageRequest.Builder(context)
+                                .data(cover)
+                                // Allow memory caching for widgets to avoid re-decoding same images
+                                .precision(Precision.EXACT)
+                                .size(widthPx, heightPx)
+                                .scale(Scale.FILL)
+
+                            val builder = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                                requestBuilder.transformations(RoundedCornersTransformation(roundPx))
+                            } else {
+                                requestBuilder // Handled by system
                             }
-                            .build()
-                        val bitmap = context.imageLoader.executeBlocking(request)
-                            .image
-                            ?.asDrawable(context.resources)
-                            ?.toBitmap()
-                        Pair(mangaId, bitmap)
+
+                            val request = builder.build()
+
+                            // Use the suspending execute to avoid blocking threads
+                            val result = context.imageLoader.execute(request)
+                            val bitmap = result.image
+                                ?.asDrawable(context.resources)
+                                ?.toBitmap()
+                            Pair(mangaId, bitmap)
+                        }
                     }
                 }
                 .awaitAll()
