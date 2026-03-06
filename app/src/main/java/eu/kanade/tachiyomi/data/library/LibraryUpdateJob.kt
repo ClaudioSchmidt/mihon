@@ -18,6 +18,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import androidx.glance.appwidget.updateAll
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
@@ -48,6 +49,8 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.NoChaptersException
+import tachiyomi.presentation.widget.UpdatesGridCoverScreenGlanceWidget
+import tachiyomi.presentation.widget.UpdatesGridGlanceWidget
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.library.service.LibraryPreferences.Companion.DEVICE_CHARGING
@@ -121,6 +124,12 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         return withIOContext {
             try {
                 updateChapterList()
+                try {
+                    UpdatesGridGlanceWidget().updateAll(context)
+                    UpdatesGridCoverScreenGlanceWidget().updateAll(context)
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) { "Failed to update widget after library sync" }
+                }
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) {

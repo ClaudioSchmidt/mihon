@@ -21,6 +21,7 @@ dependencies {
 
     implementation(compose.glance)
     implementation(libs.material)
+    implementation(androidx.workmanager)
 
     implementation(kotlinx.immutables)
 

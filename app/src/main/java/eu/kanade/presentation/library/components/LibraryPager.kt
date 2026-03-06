@@ -105,7 +105,7 @@ fun LibraryPager(
                     onGlobalSearchClicked = onGlobalSearchClicked,
                 )
             }
-            LibraryDisplayMode.ComfortableGrid -> {
+            else -> {
                 LibraryComfortableGrid(
                     items = items,
                     columns = columns,

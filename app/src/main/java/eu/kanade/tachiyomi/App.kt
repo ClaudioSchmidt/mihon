@@ -64,6 +64,7 @@ import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.widget.WidgetManager
+import tachiyomi.presentation.widget.WidgetUpdateWorker
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
@@ -156,7 +157,8 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         setAppCompatDelegateThemeMode(Injekt.get<UiPreferences>().themeMode().get())
 
         // Updates widget update
-        WidgetManager(Injekt.get(), Injekt.get()).apply { init(scope) }
+        WidgetManager(Injekt.get(), Injekt.get(), Injekt.get()).apply { init(scope) }
+        WidgetUpdateWorker.enqueue(this)
 
         if (!LogcatLogger.isInstalled) {
             val minLogPriority = when {
