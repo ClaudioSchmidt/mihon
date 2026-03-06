@@ -8,6 +8,7 @@ object Constants {
     const val MANGA_EXTRA = "manga"
 
     const val MAIN_ACTIVITY = "eu.kanade.tachiyomi.ui.main.MainActivity"
+    const val WIDGET_CONFIG_ACTIVITY = "eu.kanade.tachiyomi.widget.WidgetConfigActivity"
 
     // Shortcut actions
     const val SHORTCUT_LIBRARY = "eu.kanade.tachiyomi.SHOW_LIBRARY"

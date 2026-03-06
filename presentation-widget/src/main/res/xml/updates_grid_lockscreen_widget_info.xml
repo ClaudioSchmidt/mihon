@@ -4,4 +4,5 @@
     android:previewImage="@drawable/updates_grid_coverscreen_widget_preview"
     android:initialLayout="@layout/appwidget_coverscreen_loading"
     android:resizeMode="horizontal|vertical"
-    android:widgetCategory="keyguard" />
+    android:widgetCategory="keyguard"
+    android:updatePeriodMillis="1800000" />
